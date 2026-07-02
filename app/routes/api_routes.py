@@ -1,4 +1,5 @@
 import re
+import traceback
 
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.exceptions import BadRequest
@@ -31,7 +32,9 @@ def _validate_registration_input(name, roll_number, image_data):
     if not roll_number:
         errors["roll_number"] = "Roll number is required."
     elif not ROLL_PATTERN.match(roll_number):
-        errors["roll_number"] = "Use 2–20 letters, numbers, hyphens, or underscores only."
+        errors["roll_number"] = (
+            "Use 2–20 letters, numbers, hyphens, or underscores only."
+        )
 
     if not image_data:
         errors["image"] = "Please capture a face image from the webcam."
@@ -42,165 +45,175 @@ def _validate_registration_input(name, roll_number, image_data):
 @api_bp.route("/register-student", methods=["POST"])
 @login_required
 def register_student_api():
-    if request.content_type != "application/json":
-        current_app.logger.warning(
-            "Register student API got unexpected Content-Type: %s",
-            request.content_type,
+
+    try:
+        if request.content_type != "application/json":
+            current_app.logger.warning(
+                "Unexpected content type: %s",
+                request.content_type
+            )
+
+        data = request.get_json(silent=False) or {}
+
+        roll_number = (data.get("roll_number") or "").strip()
+        name = (data.get("name") or "").strip()
+        image_data = data.get("image")
+
+        current_app.logger.debug(
+            "Register request => name=%s roll=%s image_length=%s",
+            name,
+            roll_number,
+            len(image_data) if image_data else None,
         )
 
-    try:
-        data = request.get_json(silent=False) or {}
-    except BadRequest as exc:
-        current_app.logger.warning("Register student API invalid JSON: %s", exc)
-        return jsonify({
-            "success": False,
-            "message": "Invalid JSON payload. Please try again.",
-        }), 400
+        errors = _validate_registration_input(
+            name,
+            roll_number,
+            image_data
+        )
 
-    if not isinstance(data, dict):
-        return jsonify({
-            "success": False,
-            "message": "Invalid request body. Expected JSON object.",
-        }), 400
+        if errors:
+            return jsonify({
+                "success": False,
+                "message": "Please fix the errors below.",
+                "errors": errors
+            }), 400
 
-    roll_number = (data.get("roll_number") or "").strip()
-    name = (data.get("name") or "").strip()
-    image_data = data.get("image")
+        if get_student_by_roll(roll_number):
+            return jsonify({
+                "success": False,
+                "message": "Roll number already exists.",
+                "errors": {
+                    "roll_number": "Roll number already exists."
+                }
+            }), 409
 
-    current_app.logger.debug(
-        "Register student API request: content_type=%s, keys=%s, image_len=%s",
-        request.content_type,
-        sorted(data.keys()),
-        len(image_data) if isinstance(image_data, str) else None,
-    )
+        image_bgr = image_from_base64(image_data)
 
-    field_errors = _validate_registration_input(name, roll_number, image_data)
-    if field_errors:
-        return jsonify({
-            "success": False,
-            "message": "Please fix the errors below.",
-            "errors": field_errors,
-        }), 400
+        if image_bgr is None:
+            return jsonify({
+                "success": False,
+                "message": "Invalid image data."
+            }), 400
 
-    if get_student_by_roll(roll_number):
-        return jsonify({
-            "success": False,
-            "message": f"Roll number '{roll_number}' is already registered.",
-            "errors": {"roll_number": "This roll number already exists."},
-        }), 409
+        try:
+            image_path, _encoding = register_student_face(
+                roll_number,
+                image_bgr
+            )
 
-    image_bgr = image_from_base64(image_data)
-    if image_bgr is None:
-        return jsonify({
-            "success": False,
-            "message": "Invalid image data. Please capture the photo again.",
-            "errors": {"image": "Could not read the captured image."},
-        }), 400
+        except FaceLibraryError as exc:
+            return jsonify({
+                "success": False,
+                "message": f"Face Library Error: {str(exc)}"
+            }), 503
 
-    try:
-        image_path, _encoding = register_student_face(roll_number, image_bgr)
-    except FaceLibraryError as exc:
+        except ValueError as exc:
+            return jsonify({
+                "success": False,
+                "message": f"Validation Error: {str(exc)}",
+                "errors": {
+                    "image": str(exc)
+                }
+            }), 400
+
+        except OSError as exc:
+            return jsonify({
+                "success": False,
+                "message": f"File Error: {str(exc)}"
+            }), 500
+
+        except Exception as exc:
+            current_app.logger.error(traceback.format_exc())
+
+            return jsonify({
+                "success": False,
+                "message": f"Unexpected Error: {str(exc)}",
+                "trace": traceback.format_exc()
+            }), 500
+
+        ok, db_error = add_student(
+            name,
+            roll_number,
+            image_path
+        )
+
+        if not ok:
+            cleanup_registration(roll_number)
+
+            return jsonify({
+                "success": False,
+                "message": db_error
+            }), 400
+
+        return jsonify({
+            "success": True,
+            "message": f"Student '{name}' registered successfully!",
+            "data": {
+                "name": name,
+                "roll_number": roll_number,
+                "image_path": image_path
+            }
+        }), 201
+
+    except Exception as exc:
+
+        current_app.logger.error(traceback.format_exc())
+
         return jsonify({
             "success": False,
-            "message": str(exc),
-        }), 503
-    except ValueError as exc:
-        return jsonify({
-            "success": False,
-            "message": str(exc),
-            "errors": {"image": str(exc)},
-        }), 400
-    except OSError:
-        return jsonify({
-            "success": False,
-            "message": "Failed to save face image or encoding. Check folder permissions.",
+            "message": f"SERVER ERROR: {str(exc)}",
+            "trace": traceback.format_exc()
         }), 500
-
-    ok, db_error = add_student(name, roll_number, image_path)
-    if not ok:
-        cleanup_registration(roll_number)
-        return jsonify({
-            "success": False,
-            "message": db_error or "Could not save student to database.",
-            "errors": {"roll_number": db_error} if db_error else {},
-        }), 400
-
-    return jsonify({
-        "success": True,
-        "message": f"Student '{name}' registered successfully!",
-        "data": {
-            "name": name,
-            "roll_number": roll_number,
-            "image_path": image_path,
-        },
-    }), 201
-
-
-@api_bp.errorhandler(Exception)
-def handle_api_exception(exc):
-    current_app.logger.exception("API exception")
-    return jsonify({
-        "success": False,
-        "message": "Server error while processing the request.",
-        "error": str(exc),
-    }), 500
 
 
 @api_bp.route("/recognize", methods=["POST"])
 @login_required
 def recognize_api():
+
     data = request.get_json(silent=True) or {}
+
     image_data = data.get("image")
+
     if not image_data:
-        return jsonify({"success": False, "message": "Image is required."}), 400
+        return jsonify({
+            "success": False,
+            "message": "Image required"
+        }), 400
 
     image_bgr = image_from_base64(image_data)
+
     if image_bgr is None:
-        return jsonify({"success": False, "message": "Invalid image data."}), 400
+        return jsonify({
+            "success": False,
+            "message": "Invalid image"
+        }), 400
 
-    try:
-        result = recognize_face(image_bgr)
-    except FaceLibraryError as exc:
-        return jsonify({"success": False, "message": str(exc)}), 503
+    result = recognize_face(image_bgr)
 
-    if not result.get("success"):
-        return jsonify(result), 200
-
-    marked, detail = mark_attendance(result["student_pk"], result["name"])
-    result["attendance_marked"] = marked
-    result["attendance_message"] = (
-        "Attendance Marked"
-        if marked
-        else detail
-    )
     return jsonify(result)
 
 
 @api_bp.route("/recognize-live", methods=["POST"])
 @login_required
 def recognize_live_api():
-    """Real-time multi-face detection, recognition, and attendance marking."""
+
     data = request.get_json(silent=True) or {}
+
     image_data = data.get("image")
+
     if not image_data:
-        return jsonify({"success": False, "message": "Image is required."}), 400
-
-    image_bgr = image_from_base64(image_data)
-    if image_bgr is None:
-        return jsonify({"success": False, "message": "Invalid image data."}), 400
-
-    try:
-        result = process_live_frame(image_bgr, auto_mark=True)
-    except FaceLibraryError as exc:
-        return jsonify({"success": False, "message": str(exc)}), 503
-
-    _, known_encodings, _ = load_all_encodings()
-    if not known_encodings:
         return jsonify({
             "success": False,
-            "message": "No registered students found. Register students first.",
-            "faces": [],
-        }), 200
+            "message": "Image required"
+        }), 400
+
+    image_bgr = image_from_base64(image_data)
+
+    result = process_live_frame(
+        image_bgr,
+        auto_mark=True
+    )
 
     return jsonify(result)
 
@@ -208,14 +221,35 @@ def recognize_live_api():
 @api_bp.route("/students/<roll_number>", methods=["DELETE"])
 @login_required
 def remove_student(roll_number):
-    from app.face_utils import delete_face_image, delete_encoding
 
-    student = get_student_by_roll(roll_number)
+    from app.face_utils import (
+        delete_face_image,
+        delete_encoding
+    )
+
+    student = get_student_by_roll(
+        roll_number
+    )
+
     if not student:
-        return jsonify({"success": False, "message": "Student not found."}), 404
+        return jsonify({
+            "success": False,
+            "message": "Student not found"
+        }), 404
 
-    delete_student(roll_number)
-    delete_face_image(roll_number)
-    delete_encoding(roll_number)
+    delete_student(
+        roll_number
+    )
 
-    return jsonify({"success": True, "message": "Student removed."})
+    delete_face_image(
+        roll_number
+    )
+
+    delete_encoding(
+        roll_number
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Student removed"
+    })
