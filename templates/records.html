@@ -1,0 +1,68 @@
+{% extends 'base.html' %} {% block title %}Attendance Records | Smart
+Attendance{% endblock %} {% block content %}
+<header class="page-header">
+  <div>
+    <h2>Attendance Records</h2>
+    <p>Complete history with date and time</p>
+  </div>
+
+  <div class="header-actions">
+    <form
+      method="get"
+      action="{{ url_for('admin.records') }}"
+      class="filter-form"
+    >
+      <input type="date" name="date" value="{{ filters.date }}" />
+      <input
+        type="text"
+        name="name"
+        placeholder="Student name"
+        value="{{ filters.name }}"
+      />
+      <input
+        type="text"
+        name="roll_number"
+        placeholder="Roll number"
+        value="{{ filters.roll_number }}"
+      />
+      <button type="submit" class="btn btn-primary">Apply</button>
+      <a href="{{ url_for('admin.records') }}" class="btn btn-outline">Clear</a>
+    </form>
+
+    <a href="{{ url_for('admin.export_attendance') }}" class="btn btn-outline"
+      >Export to Excel</a
+    >
+  </div>
+</header>
+
+<section class="panel">
+  {% if records %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Roll Number</th>
+          <th>Name</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records %}
+        <tr>
+          <td>{{ record.roll_number }}</td>
+          <td>{{ record.name }}</td>
+          <td>{{ record.date }}</td>
+          <td>{{ record.time }}</td>
+          <td><span class="status-pill">{{ record.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No attendance records yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

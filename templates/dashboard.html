@@ -1,0 +1,57 @@
+{% extends 'base.html' %} {% block title %}Dashboard | Smart Attendance{%
+endblock %} {% block content %}
+<header class="page-header">
+  <div>
+    <h2>Dashboard</h2>
+    <p>Overview of students and today's attendance</p>
+  </div>
+  <a href="{{ url_for('admin.mark_attendance') }}" class="btn btn-primary"
+    >Start Attendance</a
+  >
+</header>
+
+<section class="stats-grid">
+  <article class="stat-card">
+    <p class="stat-label">Total Students</p>
+    <h3>{{ stats.total_students }}</h3>
+  </article>
+  <article class="stat-card accent">
+    <p class="stat-label">Present Today</p>
+    <h3>{{ stats.today_attendance }}</h3>
+  </article>
+  <article class="stat-card">
+    <p class="stat-label">Total Records</p>
+    <h3>{{ stats.total_records }}</h3>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <h3>Today's Check-ins</h3>
+  </div>
+  {% if stats.recent_today %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Roll Number</th>
+          <th>Name</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in stats.recent_today %}
+        <tr>
+          <td>{{ row.roll_number }}</td>
+          <td>{{ row.name }}</td>
+          <td>{{ row.time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-state">No attendance marked yet today.</p>
+  {% endif %}
+</section>
+{% endblock %}

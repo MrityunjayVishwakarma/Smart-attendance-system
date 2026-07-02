@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Smart Attendance{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% if session.get('admin_id') %}
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="brand">
+                <div>
+                    <h1>Smart Attendance</h1>
+                    <p>Face Recognition System</p>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="{{ url_for('admin.dashboard') }}" class="nav-link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+                    <span>Dashboard</span>
+                </a>
+                <a href="{{ url_for('admin.register_student') }}" class="nav-link {% if request.endpoint == 'admin.register_student' %}active{% endif %}">
+                    <span>Face Registration</span>
+                </a>
+                <a href="{{ url_for('admin.mark_attendance') }}" class="nav-link {% if request.endpoint == 'admin.mark_attendance' %}active{% endif %}">
+                    <span>Mark Attendance</span>
+                </a>
+                <a href="{{ url_for('admin.students') }}" class="nav-link {% if request.endpoint == 'admin.students' %}active{% endif %}">
+                    <span>Students</span>
+                </a>
+                <a href="{{ url_for('admin.records') }}" class="nav-link {% if request.endpoint == 'admin.records' %}active{% endif %}">
+                    <span>Attendance Records</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Signed in as <strong>{{ session.admin_username }}</strong></p>
+                <a href="{{ url_for('auth.logout') }}" class="btn btn-outline btn-sm">Logout</a>
+            </div>
+        </aside>
+        <main class="main-content">
+            {% include 'partials/flash.html' %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% else %}
+    {% include 'partials/flash.html' %}
+    {% block auth_content %}{% endblock %}
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

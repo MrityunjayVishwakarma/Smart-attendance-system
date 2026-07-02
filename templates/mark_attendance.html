@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Mark Attendance | Smart Attendance{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <div>
+        <h2>Real-Time Attendance</h2>
+        <p>Live face detection and automatic attendance marking</p>
+    </div>
+    <div class="header-actions">
+        <button type="button" class="btn btn-primary" id="startScanBtn">Start Camera</button>
+        <button type="button" class="btn btn-outline hidden" id="stopScanBtn">Stop</button>
+    </div>
+</header>
+
+<div id="attendanceToast" class="attendance-toast hidden" role="status">
+    <span class="toast-icon">✓</span>
+    <div>
+        <strong id="toastTitle">Attendance Marked</strong>
+        <p id="toastMessage"></p>
+    </div>
+</div>
+
+<section class="split-layout attendance-layout">
+    <div class="panel camera-panel large">
+        <div class="camera-header">
+            <h3>Live Camera</h3>
+            <span class="badge" id="scanStatus">Idle</span>
+        </div>
+        <div class="video-wrap live-video-wrap">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+            <canvas id="snapshotCanvas" class="hidden"></canvas>
+        </div>
+        <div class="live-stats">
+            <span id="faceCount">Faces: 0</span>
+            <span id="lastRecognized">—</span>
+        </div>
+        <p class="hint">Face boxes appear in real time. Attendance is saved once per student per day.</p>
+    </div>
+
+    <div class="panel">
+        <h3>Recognition Log</h3>
+        <div id="recognitionLog" class="log-list">
+            <p class="empty-state">Start the camera to begin real-time recognition.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/webcam.js') }}"></script>
+<script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
+{% endblock %}
